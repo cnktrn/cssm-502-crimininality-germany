@@ -1,0 +1,687 @@
+import pandas as pd
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+from linearmodels.panel import PanelOLS
+import statsmodels.tsa.stattools as grangercausalitytests
+
+####################################
+# STEP - 1: LOAD AND PREPROCESS DATA
+####################################
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+years = [2017, 2018, 2019, 2020, 2021, 2022]
+years_no_17 = [2018, 2019, 2020, 2021, 2022]
+age_groups = ['children_u_14', 'teenager_14_18', 'young_adult_18_21', 'total_u_21', 'total_21_25', 'adult_25_30', 'adult_30_40', 'adult_40_50', 'adult_50_60', 'adult_o_60', 'total_o_21']
+
+# List of cyber and computer crime related buzzwords
+cybercrime_list = ['cybercrime', 'computer crime', 'computer fraud (sect. 263a PC)', 'fraud/computer fraud using unlawfully obtained non-cash means of payment', 'fraud using unlawfully obtained payment cards without PIN (direct debiting)', 'computer fraud using unlawfully obtained payment cards with PIN (sect. 263a PC', 'fraud using unlawfully obtained payment card data (sect. 263 PC)', 'computer fraud using unlawfully obtained payment card data (sect.263a PC)', 'fraud/computer fraud using unlawfully obtained other non-cash means of payment (sects. 263, 263a PC)', 'fraud using unlawfully obtained other non-cash means of payment (sect. 263 PC)', 'computer fraud using unlawfully obtained other non-cash means of payment (sect. 263a PC)', 'other forms of computer fraud (sect. 263a PC) (not recorded under key nos.511120, 511212, 516300, 516520, 516920, 517220, 517900, 518112 or 518302)', '(other forms of) computer fraud (sect 263a 1 and 2 PC)', 'preparation of computer fraud (sect. 263a (3) PC)']
+
+# Getting the relative file paths 
+age_file_paths = []
+for year in years:
+    age_file_paths.append(os.path.join(script_dir, 'data', f'pks{year}Suspects_excel.xlsx'))
+
+state_file_paths = []
+for year in years:
+    state_file_paths.append(os.path.join(script_dir, 'data', 'state', f'state{year}.xlsx'))
+    
+district_file_paths = []
+for year in years:
+    district_file_paths.append(os.path.join(script_dir, 'data', 'district', f'district{year}.xlsx'))
+    
+city_file_paths = []
+for year in years:
+    city_file_paths.append(os.path.join(script_dir, 'data', 'city', f'city{year}.xlsx'))
+
+population_file_paths = []
+for year in years:
+    if year == 2017:
+        continue
+    population_file_paths.append(os.path.join(script_dir, 'data', 'population', f'pop{year}.xlsx'))
+
+age2017 = pd.read_excel(age_file_paths[0], skiprows=8)
+age2018 = pd.read_excel(age_file_paths[1], skiprows=8)
+age2019 = pd.read_excel(age_file_paths[2], skiprows=8)
+age2020 = pd.read_excel(age_file_paths[3], skiprows=8)
+age2021 = pd.read_excel(age_file_paths[4], skiprows=8)
+age2022 = pd.read_excel(age_file_paths[5], skiprows=8)
+
+state2017 = pd.read_excel(state_file_paths[0], skiprows=8)
+state2018 = pd.read_excel(state_file_paths[1], skiprows=8)
+state2019 = pd.read_excel(state_file_paths[2], skiprows=8)
+state2020 = pd.read_excel(state_file_paths[3], skiprows=8)
+state2021 = pd.read_excel(state_file_paths[4], skiprows=8)
+state2022 = pd.read_excel(state_file_paths[5], skiprows=8)
+
+district2017 = pd.read_excel(district_file_paths[0], skiprows=8)
+district2018 = pd.read_excel(district_file_paths[1], skiprows=8)
+district2019 = pd.read_excel(district_file_paths[2], skiprows=8)
+district2020 = pd.read_excel(district_file_paths[3], skiprows=8)
+district2021 = pd.read_excel(district_file_paths[4], skiprows=8)
+district2022 = pd.read_excel(district_file_paths[5], skiprows=8)
+
+city2017 = pd.read_excel(city_file_paths[0], skiprows=8)
+city2018 = pd.read_excel(city_file_paths[1], skiprows=8)
+city2019 = pd.read_excel(city_file_paths[2], skiprows=8)
+city2020 = pd.read_excel(city_file_paths[3], skiprows=8)
+city2021 = pd.read_excel(city_file_paths[4], skiprows=8)
+city2022 = pd.read_excel(city_file_paths[5], skiprows=8)
+
+pop2018 = pd.read_excel(population_file_paths[0], skiprows=6)
+pop2019 = pd.read_excel(population_file_paths[1], skiprows=6)
+pop2020 = pd.read_excel(population_file_paths[2], skiprows=6)
+pop2021 = pd.read_excel(population_file_paths[3], skiprows=6)
+pop2022 = pd.read_excel(population_file_paths[4], skiprows=6)
+
+# Create list of datasets
+age_list = [age2017, age2018, age2019, age2020, age2021, age2022]
+state_list = [state2017, state2018, state2019, state2020, state2021, state2022]
+district_list = [district2017, district2018, district2019, district2020, district2021, district2022]
+city_list = [city2017, city2018, city2019, city2020, city2021, city2022]
+pop_list = [pop2018, pop2019, pop2020, pop2021, pop2022]
+
+# Drop unnecessary rows and columns and rename columns
+# AGE LIST
+for i in age_list:
+    i.drop(i.columns[0], axis=1, inplace=True)
+    i.drop(i.iloc[:, 3:8], inplace=True, axis=1)
+    i.drop(i.iloc[:, 4:6], inplace=True, axis=1)
+    i.drop(i.iloc[:, 7:9], inplace=True, axis=1)
+    i.columns = ['crime', 'gender', 'total_suspects', 'children_u_14', 'teenager_14_18', 'young_adult_18_21', 'total_u_21', 'total_21_25', 'adult_25_30', 'adult_30_40', 'adult_40_50', 'adult_50_60', 'adult_o_60', 'total_o_21']
+    i = i.replace('X', 'x', inplace=True)
+
+for i in age_list:
+    i = i.replace('W', 'f', inplace=True)
+
+for i in age_list:
+    i = i.replace('M', 'm', inplace=True)
+
+# Drop unnecessary rows and columns and rename columns
+# STATE LIST
+for i in state_list:
+    i.drop(i.columns[0], axis=1, inplace=True)
+    i.drop(i.iloc[:, 4:9], inplace=True, axis=1)
+    i.drop(i.iloc[:, 5:7], inplace=True, axis=1)
+    i.drop(i.iloc[:, 8:10], inplace=True, axis=1)
+    i.columns = ['crime', 'state', 'gender', 'total_suspects', 'children_u_14', 'teenager_14_18', 'young_adult_18_21', 'total_u_21', 'total_21_25', 'adult_25_30', 'adult_30_40', 'adult_40_50', 'adult_50_60', 'adult_o_60', 'total_o_21']
+    i = i.replace('W', 'f', inplace=True)
+    
+for df in state_list:
+    df = df.replace('M', 'm', inplace=True)
+
+for df in state_list:
+    df = df.replace('X', 'x', inplace=True)
+    
+for df in state_list:
+    df = df.replace('Straftaten insgesamt', 'total offences', inplace=True)
+
+# Drop unnecessary rows and columns and rename columns
+# DISTRICT LIST
+for i in district_list:
+    i.drop(i.columns[0], axis=1, inplace=True)
+    i.drop(i.columns[1], axis=1, inplace=True)
+    i.drop(i.columns[2], axis=1, inplace=True)
+    i.drop(i.iloc[:, 4:9], inplace=True, axis=1)
+    i.drop(i.iloc[:, 5:7], inplace=True, axis=1)
+    i.drop(i.iloc[:, 8:10], inplace=True, axis=1)
+    i.columns = ['crime', 'district', 'gender', 'total_suspects', 'children_u_14', 'teenager_14_18', 'young_adult_18_21', 'total_u_21', 'total_21_25', 'adult_25_30', 'adult_30_40', 'adult_40_50', 'adult_50_60', 'adult_o_60', 'total_o_21']
+    i = i.replace('W', 'f', inplace=True)
+    
+for df in district_list:
+    df = df.replace('M', 'm', inplace=True)
+
+for df in district_list:
+    df = df.replace('X', 'x', inplace=True)
+    
+for df in district_list:
+    df = df.replace('Straftaten insgesamt', 'total offences', inplace=True)
+
+# Drop unnecessary rows and columns and rename columns
+# CITY LIST
+for i in city_list:
+    i.drop(i.columns[0], axis=1, inplace=True)
+    i.drop(i.columns[1], axis=1, inplace=True)
+    i.drop(i.iloc[:, 4:9], inplace=True, axis=1)
+    i.drop(i.iloc[:, 5:7], inplace=True, axis=1)
+    i.drop(i.iloc[:, 8:10], inplace=True, axis=1)
+    i.columns = ['crime', 'city', 'gender', 'total_suspects', 'children_u_14', 'teenager_14_18', 'young_adult_18_21', 'total_u_21', 'total_21_25', 'adult_25_30', 'adult_30_40', 'adult_40_50', 'adult_50_60', 'adult_o_60', 'total_o_21']
+    i = i.replace('W', 'f', inplace=True)
+    
+for df in city_list:
+    df = df.replace('M', 'm', inplace=True)
+
+for df in city_list:
+    df = df.replace('X', 'x', inplace=True)
+
+for df in city_list:
+    df = df.replace('Straftaten insgesamt', 'total offences', inplace=True)
+    
+# Drop unnecessary rows and columns and rename columns
+# POPULATION LIST
+for i in pop_list:
+    i.drop(i.columns[0], axis=1, inplace=True)
+    i.drop(i.iloc[:, 4:10], inplace=True, axis=1)
+    i.columns = ['state', 'x', 'm', 'f']
+
+# Add a 'Year' column to each dataset
+for i, year in zip(age_list, range(2017, 2023)):
+    i['year'] = year
+
+for i, year in zip(state_list, range(2017, 2023)):
+    i['year'] = year
+
+for i, year in zip(district_list, range(2017, 2023)):
+    i['year'] = year
+    
+for i, year in zip(city_list, range(2017, 2023)):
+    i['year'] = year
+
+# Concatenate all datasets
+crimes_df = pd.concat(age_list)
+state_df = pd.concat(state_list)
+district_df = pd.concat(district_list)
+city_df = pd.concat(city_list)
+
+# Clean up state_df
+state_df = state_df[state_df['state'] != 'Bund echte Zählung der Tatverdächtigen']
+state_df = state_df[state_df['state'] != 'Bundesrepublik Deutschland']
+state_df = state_df[state_df['state'] != 'Bundesrepublik Deutschalnd']
+
+# Extract total crime numbers
+total_crimes = crimes_df[crimes_df['gender'] == 'x']
+total_state_crimes = state_df[state_df['gender'] == 'x']
+total_district_crimes = district_df[district_df['gender'] == 'x']
+total_city_crimes = city_df[city_df['gender'] == 'x']
+
+#####################################
+# STEP - 2: EXPLORATORY DATA ANALYSIS
+#####################################
+
+# Define dictionaries to store results
+crimes_m_dict = {} # 1. Number of total crimes by men per year
+crimes_t_dict = {} # 2. Number of total crimes per year
+crimes_f_dict = {} # 3. Number of total crimes by women per year
+crime_dtr_m_dict = {} # 4. Percentage of total crimes by men per year
+crime_dtr_f_dict = {} # 5. Percentage of total crimes by women per year
+
+for year in years:
+    curr_year_m = crimes_df[(crimes_df['gender'] == 'm') & (crimes_df['crime'] == 'total offences') & (crimes_df['year'] == year)]
+    curr_year_t = crimes_df[(crimes_df['gender'] == 'x') & (crimes_df['crime'] == 'total offences') & (crimes_df['year'] == year)]
+    
+    curr_year_m = curr_year_m['total_suspects'].values[0]
+    curr_year_t = curr_year_t['total_suspects'].values[0]
+    curr_year_f = curr_year_t - curr_year_m
+    
+    curr_year_dtr_m = ((curr_year_m / curr_year_t) * 100).round(2)
+    curr_year_dtr_f = (100 - curr_year_dtr_m).round(2)
+
+    crimes_m_dict[f'{year}'] = curr_year_m
+    crimes_t_dict[f'{year}'] = curr_year_t
+    crimes_f_dict[f'{year}'] = curr_year_f
+    
+    crime_dtr_m_dict[f'{year}'] = curr_year_dtr_m
+    crime_dtr_f_dict[f'{year}'] = curr_year_dtr_f
+
+# 6. Total number of crimes in all years (2017-2022)
+all_crimes = 0
+for crimes in crimes_t_dict.values():
+    all_crimes += crimes
+
+# 7. Top 10 most committed crimes per year
+most_crimes = total_crimes.copy()
+most_crimes = most_crimes[most_crimes['crime'] != 'total offences']
+most_crimes = most_crimes.sort_values(by='total_suspects', ascending=False)
+
+most_crimes_yearly = {}
+for year in years:
+    curr_year = most_crimes[most_crimes['year'] == year]
+    curr_year = curr_year.head(10)
+    curr_year.drop(curr_year.columns.difference(['crime']), axis=1, inplace=True)
+    most_crimes_yearly[f'{year}'] = curr_year
+ 
+# 8. Top 10 most committed crimes per age group per year
+most_crimes_age = total_crimes[total_crimes['crime'] != 'total offences']
+
+most_crimes_age_yearly = {}
+for year in years:
+    for age in age_groups:
+        curr_year = most_crimes_age[most_crimes_age['year'] == year]
+        curr_year = curr_year.sort_values(by=age, ascending=False)
+        curr_year = curr_year.head(10)
+        curr_year.drop(curr_year.columns.difference(['crime', age]), axis=1, inplace=True)
+        most_crimes_age_yearly[f'{age}_{year}'] = curr_year
+
+# 9. Number of crimes <100 and >10000 per year
+crimes_gt10000_dict = {} # Number of crimes >10000 per year
+crimes_lt100_dict = {} # Number of crimes <100 per year
+
+for year in years:
+    crimes_gt10000 = total_crimes[total_crimes['total_suspects'] > 10000]
+    crimes_gt10000 = crimes_gt10000[crimes_gt10000['year'] == year]
+    crimes_gt10000 = crimes_gt10000[crimes_gt10000['crime'] != 'total offences']
+    crimes_gt10000 = crimes_gt10000['total_suspects'].shape[0]
+
+    crimes_lt100 = total_crimes[total_crimes['total_suspects'] < 100]
+    crimes_lt100 = crimes_lt100[crimes_lt100['year'] == year]
+    crimes_lt100 = crimes_lt100[crimes_lt100['crime'] != 'total offences']
+    crimes_lt100 = crimes_lt100['total_suspects'].shape[0]
+
+    crimes_gt10000_dict[f'{year}'] = crimes_gt10000
+    crimes_lt100_dict[f'{year}'] = crimes_lt100
+
+# 10. Total crimes per state per year
+crimes_state_yearly = {}
+for year in years:
+    curr_year = total_state_crimes[total_state_crimes['year'] == year]
+    curr_year = curr_year[curr_year['crime'] == 'total offences']
+    curr_year.drop(curr_year.columns.difference(['state', 'total_suspects']), axis=1, inplace=True)
+    curr_year = curr_year.sort_values(by='total_suspects', ascending=False)
+    crimes_state_yearly[f'{year}'] = curr_year
+
+# 11. Total crimes per district per year
+crimes_district_yearly = {}
+for year in years:
+    curr_year = total_district_crimes[total_district_crimes['year'] == year]
+    curr_year = curr_year[curr_year['crime'] == 'total offences']
+    curr_year.drop(curr_year.columns.difference(['district', 'total_suspects']), axis=1, inplace=True)
+    curr_year = curr_year.sort_values(by='total_suspects', ascending=False)
+    curr_year.head(10)
+    crimes_district_yearly[f'{year}'] = curr_year
+
+# 12. 10 districts with highest and lowest number of crimes per year
+top10_crimes_district_yearly = {}
+least10_crimes_district_yearly = {}
+for year in years:
+    curr_year = crimes_district_yearly[f'{year}']
+    least_year = curr_year.tail(10)
+    least_year = least_year.sort_values(by='total_suspects', ascending=False)
+    curr_year = curr_year.head(10)
+    top10_crimes_district_yearly[f'{year}'] = curr_year
+    least10_crimes_district_yearly[f'{year}'] = least_year
+
+# 13. Total crimes per city per year
+crimes_city_yearly = {}
+for year in years:
+    curr_year = total_city_crimes[total_city_crimes['year'] == year]
+    curr_year = curr_year[curr_year['crime'] == 'total offences']
+    curr_year.drop(curr_year.columns.difference(['city', 'total_suspects']), axis=1, inplace=True)
+    curr_year = curr_year.sort_values(by='total_suspects', ascending=False)
+    curr_year.head(10)
+    crimes_city_yearly[f'{year}'] = curr_year
+    
+# 14. 10 cities with highest and lowest number of city per year
+top10_crimes_city_yearly = {}
+least10_crimes_city_yearly = {}
+for year in years:
+    curr_year = crimes_city_yearly[f'{year}']
+    least_year = curr_year.tail(10)
+    least_year = least_year.sort_values(by='total_suspects', ascending=False)
+    curr_year = curr_year.head(10)
+    top10_crimes_city_yearly[f'{year}'] = curr_year
+    least10_crimes_city_yearly[f'{year}'] = least_year
+
+# 15. Average crime rate per state per year
+crimes_state_pop_yearly = {}
+pop_list_x_sus = pop_list.copy()
+for i in pop_list_x_sus:
+    i.drop(i.columns.difference(['state', 'total_suspects', 'x']), axis=1, inplace=True)
+for year in years:
+    if year == 2017:
+        continue
+    curr_year = crimes_state_yearly[f'{year}']
+    curr_year = curr_year.merge(pop_list_x_sus[year-2018], on='state')
+    curr_year['ratio'] = (curr_year['total_suspects'] / curr_year['x'] * 100).round(2)
+    curr_year = curr_year.sort_values(by='ratio', ascending=False)
+    crimes_state_pop_yearly[f'{year}'] = curr_year
+
+# 16. Average crime rate per year
+crime_rate_yearly = {}
+for year in years:
+    if year == 2017:
+        continue
+    curr_year = crimes_state_pop_yearly[f'{year}']
+    crime_rate_yearly[f'{year}'] = curr_year['ratio'].mean().round(2)
+
+# 17. Crime rate per state per year
+pop_list_x = pop_list_x_sus.copy()
+for i in pop_list_x:
+    i.drop(i.columns.difference(['state', 'x']), axis=1, inplace=True)
+total_crimes_state_rate = total_state_crimes.copy()
+total_crimes_state_rate = total_crimes_state_rate[total_crimes_state_rate['year'] != 2017]
+total_crimes_state_rate.drop(total_crimes_state_rate.columns.difference(['crime', 'state', 'total_suspects', 'year', 'crime_rate']), axis=1, inplace=True)
+total_crimes_state_rate['crime_rate'] = total_crimes_state_rate['year'].apply(lambda year: crime_rate_yearly.get(f'{year}', 0))
+for year in years:
+    if year == 2017:
+        continue
+    total_crimes_state_rate = total_crimes_state_rate.merge(pop_list_x[year-2018][['state', 'x']].rename(columns={'x': 'population'}), on='state', how='left', suffixes=('', f'_{year}'))
+total_crimes_state_rate.drop(total_crimes_state_rate.columns.difference(['crime', 'state', 'total_suspects', 'year', 'crime_rate', 'population']), axis=1, inplace=True)
+
+# 18. Top 50 yearly crimes
+top50_crimes = total_crimes.copy()
+top50_crimes = top50_crimes[top50_crimes['crime'] != 'total offences']
+top50_crimes = top50_crimes.sort_values(by='total_suspects', ascending=False)
+
+top50_crimes_yearly = {}
+for year in years:
+    curr_year = top50_crimes[top50_crimes['year'] == year]
+    curr_year = curr_year.head(50)
+    curr_year.drop(curr_year.columns.difference(['crime', 'total_suspects']), axis=1, inplace=True)
+    curr_year.dropna(inplace=True)
+    top50_crimes_yearly[f'{year}'] = curr_year
+
+# 19. YoY Change in total number of crimes
+top50_change_yearly = {}
+for year in years:
+    if year == 2017:
+        continue
+    curr_year = top50_crimes_yearly[f'{year}']
+    prev_year = top50_crimes_yearly[f'{year-1}']
+    for i, j in zip(curr_year['total_suspects'], prev_year['total_suspects']):
+        if i < j:
+            curr_year['change'] = ((1 - (prev_year['total_suspects'] / curr_year['total_suspects'])) * 100).round(2)
+        else:
+            curr_year['change'] = -((1 - (curr_year['total_suspects'] / prev_year['total_suspects'])).round(2))
+    curr_year = curr_year.sort_values(by='change', ascending=False)
+    curr_year.dropna(inplace=True)
+    top50_change_yearly[f'{year}'] = curr_year
+
+# 20. Cybercrime related crimes per year
+cybercrime_df = total_crimes[total_crimes['crime'].isin(cybercrime_list)]
+
+cybercrimes_yearly = {}
+for year in years:
+    curr_year = cybercrime_df[cybercrime_df['year'] == year]
+    curr_year.drop(curr_year.columns.difference(['crime', 'total_suspects', 'year']), axis=1, inplace=True)
+    total_cyber_crimes = curr_year['total_suspects'].sum()
+    cybercrimes_yearly[f'{year}'] = total_cyber_crimes
+
+# 21. YoY Change in cybercrime related crimes
+cybercrime_change_yearly = {}
+for year in years:
+    if year == 2017:
+        continue
+    curr_year = cybercrimes_yearly[f'{year}']
+    prev_year = cybercrimes_yearly[f'{year-1}']
+    if curr_year > prev_year:
+        cybercrime_change_yearly[f'{year}'] = (100 - ((prev_year / curr_year * 100).round(2))).round(2)
+    else:
+        cybercrime_change_yearly[f'{year}'] = (-(100-((curr_year / prev_year * 100).round(2)))).round(2)
+
+
+#####################################
+# STEP - 3: VISUALIZE DATA
+#####################################
+
+#####################################
+# Total number of crimes per year
+total_crimes_x =  total_crimes[total_crimes['crime'] == 'total offences'][['crime', 'total_suspects', 'year']].copy()
+
+crime_to_plot = 'total offences'
+filtered_df = total_crimes_x[total_crimes_x['crime'] == crime_to_plot]
+
+# Customize the plot
+# plt.title(f'Total Suspects for {crime_to_plot.capitalize()} Over the Years')
+# plt.xlabel('Year')
+# plt.ylabel('Total Suspects')
+# plt.grid(True)
+# plt.legend()
+# plt.show()
+
+#####################################
+# Total number of crimes per year per state
+
+# Create a line chart for 21. YoY Change in cybercrime related crimes
+cybercrime_change_yearly_df = pd.DataFrame(cybercrime_change_yearly.items(), columns=['year', 'change'])
+cybercrime_change_yearly_df['year'] = cybercrime_change_yearly_df['year'].astype(int)
+cybercrime_change_yearly_df.sort_values(by='year', ascending=True, inplace=True)
+
+# Plot the line chart
+plt.plot(cybercrime_change_yearly_df['year'], cybercrime_change_yearly_df['change'], marker='o', linestyle='-', color='b', label='Cybercrime')
+
+
+
+for year in years:
+    curr_year = crimes_state_yearly[f'{year}']
+    curr_year.sort_values(by='state', ascending=True, inplace=True)
+    crimes_state_yearly[f'{year}'] = curr_year
+
+crimes_state_list = []
+for year in years:
+    crimes_state_list.append(crimes_state_yearly[f'{year}'])
+
+plt.figure(figsize=(10, 6))
+for year, df in zip(range(2017, 2023), crimes_state_list):
+    plt.plot(df['state'], df['total_suspects'], label=f'Year {year}')
+
+plt.xlabel('State')
+plt.ylabel('Total Suspects')
+plt.title('Total Suspects Over the Years')
+plt.xticks(rotation=45, ha='right')  # Set x-axis tick labels for all years
+plt.legend()
+plt.show()
+
+#####################################
+# STEP - 4: REGRESSION ANALYSIS
+#####################################
+
+# Assuming 'total_suspects' is the dependent variable
+# and you have other relevant independent variables like 'crime_rate', 'population', etc.
+
+# Example: 'crime_rate' and 'population' as independent variables
+independent_vars = ['crime_rate', 'population']
+
+# Create a DataFrame with the relevant columns
+regression_data = total_crimes_state_rate[['total_suspects'] + independent_vars]
+
+for var in independent_vars:
+    regression_data[f'{var}_lag1'] = regression_data[var].shift(1)
+
+# Drop any rows with missing values
+regression_data = regression_data.dropna()
+
+# Add a constant term for the intercept
+regression_data = sm.add_constant(regression_data)
+
+# Define the dependent and independent variables
+y = regression_data['total_suspects']
+X = regression_data[['const'] + [f'{var}_lag1' for var in independent_vars]]
+
+# Fit the regression model
+model = sm.OLS(y, X).fit()
+
+#####################################
+# STEP - 5: PRINT RESULTS
+#####################################
+
+print('IMPAC OF COVID-19 ON CRIMINALITY IN GERMANY')
+print('2017-2022')
+print('____________________________________________')
+print('\n')
+print('\n')
+print('\n')
+
+print('____________________________________________')
+print('\n')
+print('1. Number of total crimes by men per year')
+for year in years:
+    print(f'{year}: {crimes_m_dict[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('2. Number of total crimes per year')
+for year in years:
+    print(f'{year}: {crimes_t_dict[f"{year}"]}')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('3. Number of total crimes by women per year')
+for year in years:
+    print(f'{year}: {crimes_f_dict[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('4. Percentage of total crimes by men per year')
+for year in years:
+    print(f'{year}: {crime_dtr_m_dict[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('5. Percentage of total crimes by women per year')
+for year in years:
+    print(f'{year}: {crime_dtr_f_dict[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('6. Total number of crimes in all years (2017-2022)')
+print(all_crimes)
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('7. Top 10 most committed crimes per year')
+for year in years:
+    print(f'{year}: {most_crimes_yearly[f"{year}"]}')
+    print('\n')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('8. Top 10 most committed crimes per age group per year')
+for year in years:
+    for age in age_groups:
+        print(f'{age}_{year}: {most_crimes_age_yearly[f"{age}_{year}"]}')
+        print('\n')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('9. Number of crimes <100 and >10000 per year')
+for year in years:
+    print(f'{year}: Crimes >10000: {crimes_gt10000_dict[f"{year}"]}, Crimes <100: {crimes_lt100_dict[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('10. Total crimes per state per year')
+for year in years:
+    print(f'{year}: {crimes_state_yearly[f"{year}"]}')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('11. Total crimes per district per year')
+for year in years:
+    print(f'{year}: {crimes_district_yearly[f"{year}"]}')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('12. 10 districts with highest and lowest number of crimes per year')
+for year in years:
+    print(f'{year}:')
+    print(f'Top 10: {top10_crimes_district_yearly[f"{year}"]}')
+    print('\n')
+    print(f'{year}:')
+    print(f'Least 10: {least10_crimes_district_yearly[f"{year}"]}')
+    print('\n')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('13. Total crimes per city per year')
+for year in years:
+    print(f'{year}:')
+    print(f'{crimes_city_yearly[f"{year}"]}')
+    print('\n')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('14. 10 cities with highest and lowest number of city per year')
+for year in years:
+    print(f'{year}:')
+    print(f'Top 10: {top10_crimes_city_yearly[f"{year}"]}')
+    print('\n')
+    print(f'{year}:')
+    print(f'Least 10: {least10_crimes_city_yearly[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('15. Ratio of crimes per state per inhabitant')
+for year in years_no_17:
+    if year == 2017:
+        continue
+    print(f'{year}:')
+    print(f'{crimes_state_pop_yearly[f"{year}"]}')
+    print('\n')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('16. Average crime rate per inhabitant per year')
+for year in years_no_17:
+    if year == 2017:
+        continue
+    print(f'{year}: {crime_rate_yearly[f"{year}"]}')
+    
+print('\n')
+print('____________________________________________')
+print('\n')
+print('17. Crime rate per state per year')
+for year in years:
+    if year == 2017:
+        continue
+    print(f'{year}:')
+    print(f'{total_crimes_state_rate[total_crimes_state_rate["year"] == year]}')
+    print('\n')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('18. Top 50 yearly crimes')
+for year in years:
+    print(f'{year}:')
+    print(f'{top50_crimes_yearly[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('19. YoY Change in total number of crimes')
+print('\n')
+for year in years:
+    if year == 2017:
+        continue
+    print(f'{year}:')
+    print(f'{top50_change_yearly[f"{year}"]}')
+    print('\n')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('20. Cybercrime related crimes per year')
+for year in years:
+    print(f'{year}: {cybercrimes_yearly[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('21. YoY Change in cybercrime related crimes')
+for year in years:
+    if year == 2017:
+        continue
+    print(f'{year}: {cybercrime_change_yearly[f"{year}"]}')
+
+print('\n')
+print('____________________________________________')
+print('\n')
+print('22. Regression Analysis')
+print(model.summary())
